@@ -1,0 +1,18 @@
+[package]
+name = "stats-linux"
+version = "0.2.5"
+edition = "2021"
+description = "Linux build of Stats (part of the MattsSoftware suite)."
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "stats"
+path = "src/main.rs"
+
+[dependencies]
+# Filled in iteratively. Initial pick:
+#   sysinfo   = "0.32"
+#   procfs    = "0.16"
+#   ksni      = "0.2"
+#   anyhow    = "1"
