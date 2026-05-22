@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Stats host entitlements. Must declare the same App Group as the
+  widget extension at Widget/Supporting Files/StatsWidgets.entitlements
+  — without this on the host process, `SharedStatsStore.write` can't
+  resolve the Group Container URL and the widget reads back stale
+  data. Group id has to match exactly; drift here is a silent failure.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>F6ZAL7ANAD.group.com.mattssoftware.stats</string>
+  </array>
+</dict>
+</plist>

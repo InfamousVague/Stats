@@ -21,6 +21,9 @@ enum MenuBarWidget: String, Codable, CaseIterable, Identifiable {
 
 struct MenuBarSettings: Codable {
     var widgets: [MenuBarWidget] = [.icon]
+    /// Font size for the tray metric value (CPU%, RAM%, etc.). The tag
+    /// label scales proportionally. Range: 9...16 (default 11).
+    var fontSize: Double = 11
 
     private static var url: URL {
         let dir = FileManager.default
@@ -90,10 +93,13 @@ struct MenuBarWidgetView: View {
     }
 
     private func metric(_ tag: String, _ value: String) -> some View {
-        HStack(spacing: 2) {
-            Text(tag).font(.system(size: 8, weight: .medium)).foregroundStyle(.white.opacity(0.6))
+        let valueSize = store.menuBar.fontSize
+        let tagSize = max(7, valueSize - 3)
+        return HStack(spacing: 2) {
+            Text(tag).font(.system(size: tagSize, weight: .medium))
+                .foregroundStyle(.white.opacity(0.6))
             dimZeros(value, dim: Color.white.opacity(0.45))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.system(size: valueSize, weight: .semibold, design: .monospaced))
         }
     }
 

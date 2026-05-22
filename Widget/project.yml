@@ -1,0 +1,59 @@
+# xcodegen spec for the Stats widget extension. Tiny Xcode subproject
+# that owns the WidgetKit appex — everything else (the standalone
+# Stats shim, the StatsPane dylib, the StatsShared library the
+# widget reads from) stays in Package.swift at the repo root. The
+# only reason this exists is that SwiftPM has no
+# `productType = com.apple.product-type.app-extension` (SR-14944),
+# which is what ExtensionFoundation needs at launch.
+#
+# Build via the `xcodebuild` invocation in scripts/make-app.sh; that
+# bakes Stats.app/Contents/PlugIns/StatsWidgets.appex out of this.
+
+name: StatsWidgets
+options:
+  bundleIdPrefix: com.mattssoftware.stats
+  deploymentTarget:
+    macOS: "14.0"
+  developmentLanguage: en
+
+# Consume the SPM package at ../ — that's where StatsShared lives.
+# The widget reads `SharedStats` (JSON the host writes every tick)
+# via the StatsStore helper.
+packages:
+  Stats:
+    path: ..
+
+targets:
+  StatsWidgets:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources
+    info:
+      path: Supporting Files/Info.plist
+      properties:
+        CFBundleDisplayName: Stats Live
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    # NB: NOT using `entitlements:` here. xcodegen's `entitlements.path`
+    # *overwrites* the file with an empty <dict/> on every regen unless
+    # `properties` is also set — a blank entitlements file makes pkd
+    # reject the appex with "plug-ins must be sandboxed". Point at the
+    # file via the standard Xcode build setting instead.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattssoftware.stats.widget
+        PRODUCT_NAME: StatsWidgets
+        CODE_SIGN_ENTITLEMENTS: Supporting Files/StatsWidgets.entitlements
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: F6ZAL7ANAD
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "0.3.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - package: Stats
+        product: StatsShared

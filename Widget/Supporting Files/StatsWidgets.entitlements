@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  StatsWidgets extension entitlements. Sandboxed (pkd rejects any
+  un-sandboxed plug-in with "plug-ins must be sandboxed") and a
+  shared App Group with the Stats host so the widget's
+  TimelineProvider can read `SharedStats` out of the Group Container.
+
+  No file-read scopes — the widget never samples directly; the
+  host writes a compact JSON every tick and the widget reads it.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>F6ZAL7ANAD.group.com.mattssoftware.stats</string>
+  </array>
+</dict>
+</plist>

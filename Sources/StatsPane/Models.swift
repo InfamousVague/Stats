@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import AppKit
+import StatsShared
 
 /// Fixed-length rolling buffer for the time-series charts.
 struct Ring {
@@ -44,6 +45,15 @@ final class StatsStore {
             menuBar.widgets.append(w)
         }
         if menuBar.widgets.isEmpty { menuBar.widgets = [.icon] }
+        menuBar.save()
+        onTick?()
+    }
+
+    /// Tray metric font size (range 9...16). Re-rasterises immediately.
+    func setMenuBarFontSize(_ size: Double) {
+        let clamped = min(16, max(9, size.rounded()))
+        guard clamped != menuBar.fontSize else { return }
+        menuBar.fontSize = clamped
         menuBar.save()
         onTick?()
     }
@@ -132,6 +142,33 @@ final class StatsStore {
                 await MainActor.run { self.sensors = s }
             }
         }
+        // Publish a compact snapshot to the App Group container so
+        // the widget extension can render the latest numbers. The
+        // store debounces WidgetKit reloads internally so this stays
+        // cheap even at our native ~2Hz sampling rate.
+        writeSharedSnapshot()
         onTick?()
+    }
+
+    /// Compact every-tick snapshot for `StatsWidgets.appex`. Pulls the
+    /// busiest process by CPU into a single-string field so the widget
+    /// doesn't need to know our internal ProcInfo type.
+    private func writeSharedSnapshot() {
+        let top = topByCPU.first
+        let snapshot = SharedStats(
+            cpu: cpu.total,
+            memoryUsed: memory.usedFraction,
+            memoryUsedBytes: memory.used,
+            memoryTotalBytes: memory.total,
+            diskUsed: disk.primary?.usedFraction ?? 0,
+            diskUsedBytes: disk.primary?.used ?? 0,
+            diskTotalBytes: disk.primary?.total ?? 0,
+            topProcessName: top?.name ?? "",
+            topProcessCPU: top?.cpu ?? 0,
+            networkDownBytesPerSec: net.rxBytesPerSec,
+            networkUpBytesPerSec: net.txBytesPerSec,
+            sampledAt: Date()
+        )
+        SharedStatsStore.write(snapshot)
     }
 }

@@ -10,6 +10,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+                .frame(height: 46)
             Divider()
             ScrollView {
                 VStack(spacing: 14) {
@@ -26,6 +27,7 @@ struct ContentView: View {
             }
             Divider()
             footer
+                .frame(height: 46)
         }
         .frame(width: 340, height: 540)
         .tint(accent)
@@ -386,6 +388,19 @@ struct ContentView: View {
             Text("Order shown = order in the tray (first is leftmost).")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
 
+            HStack(spacing: 8) {
+                Text("Text size").font(.system(size: 11)).foregroundStyle(.secondary)
+                Slider(
+                    value: Binding(get: { store.menuBar.fontSize },
+                                   set: { store.setMenuBarFontSize($0) }),
+                    in: 9...16, step: 1
+                )
+                Text("\(Int(store.menuBar.fontSize))")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, alignment: .trailing)
+            }
+
             ForEach(Array(store.menuBar.widgets.enumerated()), id: \.element) { idx, w in
                 HStack(spacing: 8) {
                     Image(systemName: "line.3.horizontal")
@@ -467,9 +482,9 @@ struct ContentView: View {
     }
 
     private var card: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(Color.white.opacity(0.04))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(Color.white.opacity(0.07), lineWidth: 1))
     }
 }

@@ -50,6 +50,46 @@ else
   echo "⚠ no art/AppIcon-source.png — building without a custom app icon"
 fi
 
+# ── Widget extension (.appex) ─────────────────────────────────────
+# Built by Xcode, not SwiftPM. SwiftPM has no `productType = app-
+# extension` (SR-14944), and without it ExtensionFoundation fatal-
+# errors with "Unrecognized extension type" at launch. The widget
+# is a tiny Xcode subproject at `Widget/StatsWidgets.xcodeproj` that
+# consumes `StatsShared` from this package via a local-package
+# dependency so the host pane and the widget share one source of
+# truth for the App Group + SharedStats snapshot model.
+#
+# SKIP_WIDGET=1 lets you iterate on the host without the xcodebuild
+# round-trip on every build.
+if [ "${SKIP_WIDGET:-0}" != "1" ]; then
+  if command -v xcodegen >/dev/null; then
+    ( cd "$ROOT/Widget" && xcodegen generate --quiet )
+  fi
+  echo "› xcodebuild StatsWidgets.appex"
+  XCB_OUT="$ROOT/.build/xcode"
+  xcodebuild \
+    -project "$ROOT/Widget/StatsWidgets.xcodeproj" \
+    -scheme StatsWidgets \
+    -configuration Release \
+    -derivedDataPath "$XCB_OUT" \
+    MARKETING_VERSION="$VERSION" \
+    CURRENT_PROJECT_VERSION="$VERSION" \
+    CODE_SIGN_IDENTITY="-" \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGNING_ALLOWED=NO \
+    -quiet \
+    build
+  WIDGET_APPEX="$XCB_OUT/Build/Products/Release/StatsWidgets.appex"
+  if [ -d "$WIDGET_APPEX" ]; then
+    mkdir -p "$APP/Contents/PlugIns"
+    rm -rf "$APP/Contents/PlugIns/StatsWidgets.appex"
+    ditto "$WIDGET_APPEX" "$APP/Contents/PlugIns/StatsWidgets.appex"
+    echo "✓ embedded $APP/Contents/PlugIns/StatsWidgets.appex"
+  else
+    echo "⚠ widget build produced no .appex at $WIDGET_APPEX"
+  fi
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -76,14 +116,37 @@ $ICON_KEY
 </plist>
 PLIST
 
+# Inside-out signing — codesign rejects a parent bundle whose
+# children aren't already signed:
+#   dylibs → widget exe (extension entitlements) → widget bundle
+#   → host exe (host entitlements) → host bundle.
+# The host's App Group entitlement is what lets it write
+# `shared-stats.json` to the Group Container the widget reads from;
+# drift between `Stats.entitlements` and
+# `Widget/Supporting Files/StatsWidgets.entitlements` silently
+# breaks the data path with no error at the codesign stage.
+HOST_ENT="$ROOT/Stats.entitlements"
+WIDGET_ENT="$ROOT/Widget/Supporting Files/StatsWidgets.entitlements"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_IDENTITY"; then
   codesign --force --options runtime --timestamp \
     --sign "$SIGN_IDENTITY" "$APP/Contents/Frameworks/libSuiteKit.dylib"
   codesign --force --options runtime --timestamp \
     --sign "$SIGN_IDENTITY" "$APP/Contents/Frameworks/libStatsPane.dylib"
+  if [ -d "$APP/Contents/PlugIns/StatsWidgets.appex" ]; then
+    codesign --force --options runtime --timestamp \
+      --entitlements "$WIDGET_ENT" \
+      --sign "$SIGN_IDENTITY" \
+      "$APP/Contents/PlugIns/StatsWidgets.appex/Contents/MacOS/StatsWidgets"
+    codesign --force --options runtime --timestamp \
+      --entitlements "$WIDGET_ENT" \
+      --sign "$SIGN_IDENTITY" \
+      "$APP/Contents/PlugIns/StatsWidgets.appex"
+  fi
   codesign --force --options runtime --timestamp \
+    --entitlements "$HOST_ENT" \
     --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/Stats"
   codesign --force --options runtime --timestamp \
+    --entitlements "$HOST_ENT" \
     --sign "$SIGN_IDENTITY" "$APP"
   codesign --verify --strict --verbose=1 "$APP" && echo "✓ signed: $SIGN_IDENTITY"
 else
