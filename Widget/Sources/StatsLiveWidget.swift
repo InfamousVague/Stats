@@ -13,14 +13,22 @@ struct StatsLiveWidget: Widget {
         StaticConfiguration(kind: kind, provider: StatsProvider()) {
             entry in
             StatsWidgetView(entry: entry)
-                // Desktop-widget background card (required on macOS
-                // 14+ — without it the widget paints over the
-                // wallpaper with no card behind it and looks broken).
-                .containerBackground(.fill.tertiary, for: .widget)
+                // `Color("WidgetBackground")` from the asset catalog.
+                // The macOS Tahoe WindowServer swaps this named
+                // surface for its Liquid Glass plate when the widget
+                // is on the desktop — that's where the translucent
+                // edge feathering + specular highlight + shadow come
+                // from, NOT from a Material or `.fill.tertiary`. See
+                // the deep-dive comment in Alfred's widget config and
+                // the `WidgetKit-Implementing-Liquid-Glass-Design`
+                // doc Apple ships with Xcode 26.
+                .containerBackground(for: .widget) {
+                    Color("WidgetBackground")
+                }
         }
         .configurationDisplayName("Stats Live")
-        .description("CPU, memory, and disk at a glance.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .description("CPU, memory, disk, and network — rings, sparklines, and the busiest process.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }
 }
@@ -30,10 +38,19 @@ struct StatsWidgetView: View {
     let entry: StatsEntry
 
     var body: some View {
-        switch family {
-        case .systemSmall:  SmallView(entry: entry)
-        case .systemMedium: MediumView(entry: entry)
-        default:            SmallView(entry: entry)
+        Group {
+            switch family {
+            case .systemSmall:  SmallView(entry: entry)
+            case .systemMedium: MediumView(entry: entry)
+            case .systemLarge:  LargeView(entry: entry)
+            default:            SmallView(entry: entry)
+            }
         }
+        // Desktop-widget tap → MattsSoftware launcher's
+        // application(_:open:) routes to the Stats pane and
+        // shows the popover. Without this hook the tap launches
+        // Stats' standalone bundle id, SuiteGuard exits in
+        // merged mode, nothing visible happens.
+        .widgetURL(URL(string: "mattssoftware://stats"))
     }
 }

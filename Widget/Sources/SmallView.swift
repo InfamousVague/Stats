@@ -2,9 +2,12 @@ import SwiftUI
 import WidgetKit
 import StatsShared
 
-/// `.systemSmall` Stats layout: brand row at top, three labelled
-/// horizontal-bar gauges (CPU / RAM / Disk) stacked vertically.
-/// Centred on the tile; no buttons since Stats is observational.
+/// `.systemSmall` Stats layout — three circular ring gauges
+/// (CPU / RAM / Disk) with sparklines, plus the tracked "STATS"
+/// caps brand line at the top. No network/topprocess here; small
+/// is the headline-only tile, the medium/large variants surface the
+/// rest. Mirrors Apple's Battery widget vibe — multiple round gauges
+/// reading as a glance dashboard.
 struct SmallView: View {
     let entry: StatsEntry
 
@@ -15,6 +18,9 @@ struct SmallView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(1.5)
                     .foregroundStyle(.secondary)
+                    // Tints into the user's accent in Tinted/Clear
+                    // appearance modes; left alone in Default mode.
+                    .widgetAccentable()
                 Spacer()
                 if entry.isStale {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -25,69 +31,40 @@ struct SmallView: View {
 
             Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: 7) {
-                gaugeRow(label: "CPU",
-                         value: entry.stats.cpu,
-                         tint: cpuTint(entry.stats.cpu))
-                gaugeRow(label: "RAM",
-                         value: entry.stats.memoryUsed,
-                         tint: memTint(entry.stats.memoryUsed))
-                gaugeRow(label: "Disk",
-                         value: entry.stats.diskUsed,
-                         tint: diskTint(entry.stats.diskUsed))
+            HStack(spacing: 6) {
+                gauge("CPU", entry.stats.cpu, entry.stats.cpuHistory)
+                gauge("RAM", entry.stats.memoryUsed, entry.stats.memHistory)
+                gauge("DISK", entry.stats.diskUsed, entry.stats.diskHistory)
             }
 
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(12)
+        // Small is the easiest tile to over-pad (only 3 gauges in
+        // a narrow tile), but 12 was still leaving the rings looking
+        // edge-stuck on retina; 14 gives a touch more breathing
+        // room without forcing the rings to shrink.
+        .padding(14)
     }
 
-    private func gaugeRow(label: String,
-                          value: Double,
-                          tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(label)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(fmtPct(value))
-                    .font(.system(size: 11, weight: .semibold,
-                                  design: .rounded))
-                    .monospacedDigit()
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.25))
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: geo.size.width
-                               * max(0, min(1, value)))
-                }
-            }
-            .frame(height: 5)
-        }
+    private func gauge(_ label: String,
+                       _ value: Double,
+                       _ history: [Double]) -> some View {
+        CircularGauge(
+            label: label,
+            value: value,
+            history: history,
+            tint: tint(for: value),
+            size: 48
+        )
+        .frame(maxWidth: .infinity)
     }
 
-    // Hardcoded tints. Color.accentColor was washing out to white on
-    // the desktop widget surface in earlier Alfred testing — sticking
-    // to explicit RGB so the gauges keep their meaning regardless of
-    // the system accent or widget render mode.
-    private func cpuTint(_ v: Double) -> Color {
-        if v > 0.85 { return Color(red: 0.95, green: 0.35, blue: 0.35) }
-        if v > 0.60 { return Color(red: 0.95, green: 0.70, blue: 0.30) }
-        return Color(red: 1.00, green: 0.49, blue: 0.55)  // stats pink
-    }
-    private func memTint(_ v: Double) -> Color {
+    // Same band thresholds the previous bar-style gauges used —
+    // pink under normal load, amber over 70%, red over 90%.
+    private func tint(for v: Double) -> Color {
         if v > 0.90 { return Color(red: 0.95, green: 0.35, blue: 0.35) }
         if v > 0.70 { return Color(red: 0.95, green: 0.70, blue: 0.30) }
-        return Color(red: 1.00, green: 0.49, blue: 0.55)
-    }
-    private func diskTint(_ v: Double) -> Color {
-        if v > 0.90 { return Color(red: 0.95, green: 0.35, blue: 0.35) }
-        if v > 0.80 { return Color(red: 0.95, green: 0.70, blue: 0.30) }
         return Color(red: 1.00, green: 0.49, blue: 0.55)
     }
 }

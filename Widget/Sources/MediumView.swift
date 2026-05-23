@@ -2,10 +2,11 @@ import SwiftUI
 import WidgetKit
 import StatsShared
 
-/// `.systemMedium` Stats layout: three gauges side-by-side with
-/// a "TOP" line underneath showing the busiest process. Wider than
-/// small so each gauge gets a full thin-bar row with its absolute
-/// number ("12 GB of 32 GB") alongside.
+/// `.systemMedium` Stats — four gauges (CPU / RAM / Disk / Net) in
+/// a row, plus the top-process + memory subtitle line stacked
+/// beneath. Wider than small so we have room for the full set of
+/// metrics; the Large family will scale them up further and add the
+/// network down/up split.
 struct MediumView: View {
     let entry: StatsEntry
 
@@ -16,6 +17,7 @@ struct MediumView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(1.5)
                     .foregroundStyle(.secondary)
+                    .widgetAccentable()
                 Spacer()
                 if entry.isStale {
                     HStack(spacing: 3) {
@@ -29,16 +31,32 @@ struct MediumView: View {
 
             Spacer(minLength: 0)
 
-            VStack(spacing: 5) {
-                gaugeRow(label: "CPU",
-                         value: entry.stats.cpu,
-                         subtitle: nil)
-                gaugeRow(label: "RAM",
-                         value: entry.stats.memoryUsed,
-                         subtitle: memorySubtitle)
-                gaugeRow(label: "Disk",
-                         value: entry.stats.diskUsed,
-                         subtitle: diskSubtitle)
+            HStack(spacing: 4) {
+                gauge("CPU",
+                      value: entry.stats.cpu,
+                      history: entry.stats.cpuHistory,
+                      tint: usageTint(entry.stats.cpu))
+
+                gauge("RAM",
+                      value: entry.stats.memoryUsed,
+                      history: entry.stats.memHistory,
+                      tint: usageTint(entry.stats.memoryUsed))
+
+                gauge("DISK",
+                      value: entry.stats.diskUsed,
+                      history: entry.stats.diskHistory,
+                      tint: usageTint(entry.stats.diskUsed))
+
+                gauge("NET",
+                      // Net values aren't a usage ratio — re-use the
+                      // host's normalised history (0…1 against a 5
+                      // MB/s soft ceiling) for the ring's fill so the
+                      // sparkline shape matches the ring level. Show
+                      // the actual throughput in the centre label.
+                      value: clampUnit(currentNet),
+                      history: entry.stats.netHistory,
+                      tint: netTint,
+                      valueText: fmtRate(currentNetBytes))
             }
 
             Spacer(minLength: 0)
@@ -57,11 +75,23 @@ struct MediumView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
+                if let m = memSubtitle {
+                    Text(m)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(12)
+        // Medium runs four gauges + a TOP/MEM row, so the family
+        // default 12pt padding crammed the rings against the brand
+        // row. 16pt gives the gauges a bit of headroom while
+        // keeping the row balance Apple-Battery-style.
+        .padding(16)
     }
+
+    // MARK: derived bits
 
     private var topLine: String {
         if entry.stats.topProcessName.isEmpty { return "—" }
@@ -69,60 +99,56 @@ struct MediumView: View {
             + " · \(fmtPct(entry.stats.topProcessCPU))"
     }
 
-    private var memorySubtitle: String? {
+    private var memSubtitle: String? {
         guard entry.stats.memoryTotalBytes > 0 else { return nil }
         return "\(fmtBytes(entry.stats.memoryUsedBytes)) of "
             + fmtBytes(entry.stats.memoryTotalBytes)
     }
 
-    private var diskSubtitle: String? {
-        guard entry.stats.diskTotalBytes > 0 else { return nil }
-        return "\(fmtBytes(entry.stats.diskUsedBytes)) of "
-            + fmtBytes(entry.stats.diskTotalBytes)
+    /// Combined down+up bytes/sec, for the net gauge centre label.
+    private var currentNetBytes: Double {
+        entry.stats.networkDownBytesPerSec
+            + entry.stats.networkUpBytesPerSec
     }
 
-    private func gaugeRow(label: String,
-                          value: Double,
-                          subtitle: String?) -> some View {
-        HStack(spacing: 10) {
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 30, alignment: .leading)
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.25))
-                    Capsule()
-                        .fill(tint(for: value))
-                        .frame(width: geo.size.width
-                               * max(0, min(1, value)))
-                }
-            }
-            .frame(height: 6)
-
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(fmtPct(value))
-                    .font(.system(size: 11, weight: .semibold,
-                                  design: .rounded))
-                    .monospacedDigit()
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(width: 80, alignment: .trailing)
-        }
+    /// Same normalisation the host uses for `netHistory` so the ring
+    /// fill agrees with the sparkline shape (1.0 at 5 MB/s).
+    private var currentNet: Double {
+        currentNetBytes / 5_000_000
     }
 
-    // Hardcoded tints (see SmallView for rationale — accentColor was
-    // resolving to white on the widget render surface in Alfred).
-    private func tint(for v: Double) -> Color {
+    // MARK: helpers
+
+    private func gauge(_ label: String,
+                       value: Double,
+                       history: [Double],
+                       tint: Color,
+                       valueText: String? = nil) -> some View {
+        CircularGauge(
+            label: label,
+            value: value,
+            history: history,
+            valueText: valueText,
+            tint: tint,
+            size: 64
+        )
+        .frame(maxWidth: .infinity)
+    }
+
+    private func clampUnit(_ v: Double) -> Double {
+        max(0, min(1, v))
+    }
+
+    /// Same colour band as the bar gauges: pink → amber → red.
+    private func usageTint(_ v: Double) -> Color {
         if v > 0.90 { return Color(red: 0.95, green: 0.35, blue: 0.35) }
         if v > 0.70 { return Color(red: 0.95, green: 0.70, blue: 0.30) }
         return Color(red: 1.00, green: 0.49, blue: 0.55)
+    }
+
+    /// Network gets a distinct hue (cyan) so it doesn't blend with
+    /// the three usage rings to its left.
+    private var netTint: Color {
+        Color(red: 0.40, green: 0.78, blue: 0.95)
     }
 }
